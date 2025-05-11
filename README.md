@@ -1,52 +1,241 @@
-# Домашнє завдання. Тема 4. REST API
-Написати REST API для роботи з колекцією контактів. Для роботи з REST API використовуй `[Postman]` .
+# Домашнє завдання. Тема 7. Аутентифікація та авторизація
+Продовж створення `REST API` для роботи з колекцією контактів. Додай логіку аутентифікації / авторизації користувача через `JWT`.
+
 ## Крок 1
-Cтвори репозиторій з назвою goit-node-rest-api і помісти на головну гілку `(main)` файли з папки `src`. Завваж: папки src в репозиторії бути не повинно, тебе цікавить лише її вміст.
-Створи гілку `hw02-express` з гілки `main`.
-Встанови модулі командою:
+1. У коді створити модель користувача для таблиці users.
 ```
-npm i
+{
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  subscription: {
+      type: DataTypes.ENUM,
+      values: ["starter", "pro", "business"],
+      defaultValue: "starter"
+  },
+  token: {
+    type: DataTypes.STRING,
+    defaultValue: null,
+  },
+}
 ```
+2. Змінити модель контактів, щоб кожен користувач бачив тільки свої контакти. Для цього в модель контактів додати властивість:
+```
+   owner: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    }
+```
+
 ## Крок 2
-У файл `contactsServices.js` (знаходиться в папці `services`) скопіюй функції з файла `contacts.js` з домашнього завдання до модуля 1.
+Реєстрація
+
+1. Створити ендпоінт `/api/auth/register`
+
+2. Зробити валідацію всіх обов'язкових полів `(email і password)`. При помилці валідації повернути Помилку валідації.
+
+У разі успішної валідації в моделі User створити користувача за даними, які пройшли валідацію. Для хешування паролів використовуй bcrypt або `bcryptjs`
+
+ - Якщо пошта вже використовується кимось іншим, повернути Помилку `Conflict`.
+ - В іншому випадку повернути Успішна відповідь.
+
+### Registration request
+```
+POST /api/auth/register
+Content-Type: application/json
+RequestBody: {
+  "email": "example@example.com",
+  "password": "examplepassword"
+}
+```
+### Registration validation error
+```
+Status: 400 Bad Request
+Content-Type: application/json
+ResponseBody: {
+  "message": "Помилка від Joi або іншої бібліотеки валідації"
+}
+```
+### Registration conflict error
+```
+Status: 409 Conflict
+Content-Type: application/json
+ResponseBody: {
+  "message": "Email in use"
+}
+```
+### Registration success response
+```
+Status: 201 Created
+Content-Type: application/json
+ResponseBody: {
+  "user": {
+    "email": "example@example.com",
+    "subscription": "starter"
+  }
+}
+```
+### Логін
+
+1. Створити ендпоінт `/api/auth/login`
+
+2. В моделі User знайти користувача за `email`.
+
+3. Зробити валідацію всіх обов'язкових полів `(email і password)`. При помилці валідації повернути Помилку валідації.
+
+ - В іншому випадку, порівняти пароль для знайденого користувача, якщо паролі збігаються створити токен, зберегти в поточному юзера і повернути Успішна відповідь.
+ - Якщо пароль або імейл невірний, повернути Помилку `Unauthorized`.
+
+### Login request
+```
+POST /api/auth/login
+Content-Type: application/json
+RequestBody: {
+  "email": "example@example.com",
+  "password": "examplepassword"
+}
+```
+### Login validation error
+```
+Status: 400 Bad Request
+Content-Type: application/json
+ResponseBody: {
+  "message": "Помилка від Joi або іншої бібліотеки валідації"
+}
+```
+
+### Login success response
+```
+Status: 200 OK
+Content-Type: application/json
+ResponseBody: {
+  "token": "exampletoken",
+  "user": {
+    "email": "example@example.com",
+    "subscription": "starter"
+  }
+}
+```
+### Login auth error
+```
+Status: 401 Unauthorized
+ResponseBody: {
+  "message": "Email or password is wrong"
+}
+```
 
 ## Крок 3
-Напиши контролери у файлі `contactsControllers.js` (знаходиться у папці `controllers`) з урахуванням наведених нижче вимог.
+### Перевірка токена
 
-### REST API повинен підтримувати такі раути:
+Створити мідлвар для перевірки токена і додай його до всіх раутів, які повинні бути захищені.
 
-### GET /api/contacts
-- Викликає функцію-сервіс `listContacts` для роботи з json-файлом `contacts.json`
-- Повертає масив всіх контактів в json-форматі зі статусом `200`
-
-
-### GET /api/contacts/:id
-- Викликає функцію-сервіс `getContactById` для роботи з json-файлом `contacts.json`
-- Якщо контакт за `id` знайдений, повертає об'єкт контакту в json-форматі зі статусом `200`
-- Якщо контакт за `id` не знайдено, повертає json формату `{"message": "Not found"}` зі статусом `404`
+ - Мідлвар бере токен з заголовків `Authorization`, перевіряє токен на валідність.
+ - У випадку помилки повернути `Помилку Unauthorized`.
+ - Якщо валідація пройшла успішно, отримати з токена `id` користувача. Знайти користувача в базі даних з цим `id`.
+ - Якщо користувач існує і токен збігається з тим, що знаходиться в базі, записати його дані в req.user і викликати `next()`.
+ - Якщо користувача з таким `id` НЕ існує або токени не збігаються, повернути `Помилку Unauthorized`
 
 
-### DELETE /api/contacts/:id
-- Викликає функцію-сервіс removeContact для роботи з json-файлом `contacts.json`
-- Якщо контакт за `id` знайдений і видалений, повертає об'єкт видаленого контакту в json-форматі зі статусом `200`
-- Якщо контакт за `id` не знайдено, повертає json формату `{"message": "Not found"}` зі статусом `404`
+### Middleware unauthorized error
+```
+Status: 401 Unauthorized
+Content-Type: application/json
+ResponseBody: {
+  "message": "Not authorized"
+}
+```
+## Крок 4
+
+### Логаут
+
+1. Створити ендпоінт `/api/auth/logout`
+
+2. Додати в маршрут мідлвар перевірки токена.
+
+У моделі `User` знайти користувача за `id`.
+Якщо користувача не існує, повернути `Помилку Unauthorized`.
+В іншому випадку, видалити токен у поточного юзера і повернути Успішна відповідь.
+
+### Logout request
+```
+POST /api/auth/logout
+Authorization: "Bearer {{token}}"
+```
+
+### Logout unauthorized error
+```
+Status: 401 Unauthorized
+Content-Type: application/json
+ResponseBody: {
+  "message": "Not authorized"
+}
+```
+
+### Logout success response
+
+```
+Status: 204 No Content
+```
+## Крок 5
+
+Поточний користувач - отримати дані юзера по токені
+
+1. Створити ендпоінт `/api/auth/current`
+
+2. Додати в раут мідлвар перевірки токена.
+
+ - Якщо користувача не існує, повернути Помилку `Unauthorized`
+ - В іншому випадку повернути Успішну відповідь
+
+### Current user request
+```
+GET /api/auth/current
+Authorization: "Bearer {{token}}"
+```
+### Current user unauthorized error
+```
+Status: 401 Unauthorized
+Content-Type: application/json
+ResponseBody: {
+  "message": "Not authorized"
+}
+```
+
+### Current user success response
+```
+Status: 200 OK
+Content-Type: application/json
+ResponseBody: {
+  "email": "example@example.com",
+  "subscription": "starter"
+}
+```
+## Перед початком роботи переконайтесь, що створені або створіть таблиці `сontacts` та `users`
+Для прикладу, можна використами код `SQL`, що наведено нижче:
+```
+create table сontacts (
+	id SERIAL PRIMARY key,
+	name VARCHAR(100) NOT NULL,
+	email VARCHAR(180) NOT NULL,
+	phone VARCHAR(100) NOT NULL,
+	favorite BOOLEAN DEFAULT false,
+	owner INT NOT NULL
+);
 
 
-### POST /api/contacts
-- Отримує body в json-форматі з полями `{name, email, phone}`. Усі поля є обов'язковими - для валідації створи у файлі `contactsSchemas.js` (знаходиться у папці `schemas`) схему з використаням пакета `joi`
-- Якщо в `body` немає якихось обов'язкових полів (або передані поля мають не валідне значення), повертає `json` формату `{"message": error.message}` (де `error.message` - змістовне повідомлення з суттю помилки) зі статусом `400`
-- Якщо `body` валідне, викликає функцію-сервіс `addContact` для роботи з json-файлом `contacts.json`, з передачею їй даних з `body`
-- За результатом роботи функції повертає новостворений об'єкт з полями `{id, name, email, phone}` і статусом `201`
+create table users (
+	id SERIAL PRIMARY key,
+	email VARCHAR(100) NOT NULL UNIQUE,
+	password VARCHAR(255) NOT NULL,
+	subscription VARCHAR(20) CHECK (subscription IN ('starter', 'pro', 'business')) DEFAULT 'starter',
+	token TEXT DEFAULT NULL
+);
 
-
-### PUT /api/contacts/:id
-- Отримує `body` в json-форматі з будь-яким набором оновлених полів `(name, email, phone)` (всі поля вимагати в боді як обов'язкові не потрібно: якщо якесь із полів не передане, воно має зберегтись у контакта зі значенням, яке було до оновлення)
-- Якщо запит на оновлення здійснено без передачі в body хоча б одного поля, повертає json формату `{"message": "Body must have at least one field"}` зі статусом `400`.
-- Передані в боді поля мають бути провалідовані - для валідації створи у файлі `contactsSchemas.js` (знаходиться у папці schemas) схему з використанням пакета `joi`. Якщо передані поля мають не валідне значення, повертає json формату `{"message": error.message}` (де `error.message` - змістовне повідомлення з суттю помилки) зі статусом `400`
-- Якщо з `body` все добре, викликає функцію-сервіс updateContact, яку слід створити в файлі `contactsServices.js` (знаходиться в папці `services`). Ця функція має приймати `id` контакта, що підлягає оновленню, та дані з `body`, і оновити контакт у json-файлі `contacts.json`
-- За результатом роботи функції повертає оновлений об'єкт контакту зі статусом `200`.
-- Якщо контакт за `id` не знайдено, повертає json формату `{"message": "Not found"} `зі статусом `404`
-- Валідацію body можна як здійснювати у контролері, так і створити для цих цілей окрему міддлвару, яка буде викликатись до контролера. Для створення міддлвари можеш скористатись функцією `validateBody.js`, яку знайдеш у папці `helpers`
-- Для роботи з помилками можна скористатись функцією `HttpError.js`, яку знайдеш у папці `helpers`.
-
-Якщо вказані функції використовувати не будеш, видали їх з проєкту перед тим, як надсилатимеш роботу на перевірку ментору.
+ALTER TABLE contacts ADD CONSTRAINT fk_contacts_user FOREIGN KEY (owner) REFERENCES users(id) ON DELETE CASCADE;
+```
